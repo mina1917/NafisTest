@@ -1,0 +1,233 @@
+﻿@using FilterSorting.Models
+@using Kendo.Mvc.UI
+
+@{
+    ViewBag.Title = "Items";
+}
+
+@(Html.Kendo().Grid<ItemsWithDetailModel>()
+    .Name("Grid")
+    .Columns(c =>
+      {
+          c.Bound(f => f.Id).Width(100).Width(100).Title("Item ID").Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.Rep).Width(140).Title("FA/Employee").Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.AccountNumber).Title("Acct #").Width(100).Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.AccountName).Title("Acct Name").Width(160).Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.Assigned1).Width(140).Title("Assigned 1").Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.Assigned2).Width(140).Title("Assigned 2").Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.OpenDate).Format("{0:MM/dd/yyyy}").Width(140).Title("Date Opened").Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.CloseDate).Format("{0:MM/dd/yyyy}").Width(140).Title("Date Closed").Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.Status).Title("Status").Width(140).Filterable(ftb => ftb.Multi(true));
+          c.Bound(f => f.IssueSummary).Width(240);
+      })
+    .HtmlAttributes(new { style = "height: 100%" })
+    .Scrollable()
+    .Filterable()
+    .DataSource(dataSource => dataSource
+        .WebApi()
+        .PageSize(5)
+        .Sort(sort => sort.Add("OpenDate").Descending())
+        .Read(read => read.Url(Url.HttpRouteUrl("DefaultApi", new { controller = "RpItemsService" })))
+        .Model(m => m.Id(r => r.Id))
+        .Filter(f => f.Add(r => r.Status).IsNotEqualTo("Closed"))
+        .ServerOperation(true)
+        )
+    .Resizable(resize => resize.Columns(true))
+    .ColumnResizeHandleWidth(10)
+    .Pageable(p => p
+        .Refresh(true)
+        .PageSizes(new int[] { 5, 100, 250, 500 })
+        .ButtonCount(5)
+    )
+    .Sortable()
+    .Groupable()
+    .Events(e =>
+    {
+        e.DataBound("onDataBound");
+       //e.FilterMenuInit("onColumnMenuInit");
+       // e.ColumnMenuInit("onColumnMenuInit");
+      
+    })
+)
+<script>
+    $(function () {
+        var grid = $("#Grid").getKendoGrid();
+        debugger;
+        var dataSource = grid.dataSource;
+        alert(dataSource);
+        var options = grid.getOptions();
+        var columns = options.columns;
+        var column;
+        if (typeof grid.dataSource._filter == 'undefined') {
+            alert(grid.dataSource._filter);
+            for (var i = 0; i < columns.length; i++) {
+                column = columns[i];
+                if (column.filterable && column.filterable.multi) {
+
+                    column.filterable.dataSource = dataSource;
+                }
+            }
+            options.autoBind = true;
+            options.dataSource = dataSource;
+
+            grid.setOptions(options);
+        }
+    });
+</script>
+<script>
+    function onColumnMenuInit(e) {
+        if (e.field === "Assigned1" || e.field === "Assigned2") {
+            debugger;
+            //e.container.data("kendoPopup").bind("open", function () {
+           // var filterMultiCheck = e.container.find(".k-filterable").data("kendoFilterMultiCheck");
+            var filterMultiCheck = this.thead.find("[data-field=" + e.field + "]").data("kendoFilterMultiCheck");
+            var currentData = e.sender.dataSource.data()
+            if (filterMultiCheck) {
+                filterMultiCheck.container.empty();
+                filterMultiCheck.checkSource.data(currentData);
+                filterMultiCheck.createCheckBoxes();
+            }
+        }
+    }
+</script>
+<script>
+    function onFilterMenuInit(e) {
+        //if (e.field === "Assigned1" || e.field === "Assigned2") {
+            debugger;
+            var filterMultiCheck = this.thead.find("[data-field=" + e.field + "]").data("kendoFilterMultiCheck");
+            //filterMultiCheck.container.empty();
+            filterMultiCheck.dataSource.sort({ field: e.field, dir: "asc" });
+            var view = filterMultiCheck.dataSource.view().toJSON();
+            filterMultiCheck.dataSource.data(view);
+            //filterMultiCheck.createCheckBoxes();
+        //}
+    }
+
+    //function SortFilter(e) {
+    //    if (e.field == "Assigned1" || e.field == "Assigned2") {
+    //        initCheckboxFilter.call(this, e);
+    //    }
+    //}
+    // else if (e.field == "UnitPrice") {
+    //    initCheckboxFilter.call(this, e, "number");
+    //}
+
+    function initCheckboxFilter(e, type) {
+        var dataSource = this.dataSource;
+        var field = e.field;
+        var checkboxesDataSource = new kendo.data.DataSource({
+            data: uniqueForField(dataSource.data(), field)
+        });
+
+        dataSource.bind("change", function () {
+            checkboxesDataSource.data(uniqueForField(dataSource.data(), e.field));
+        });
+
+        var helpTextElement = e.container.children(":first").children(":first");
+        helpTextElement.nextUntil(":has(.k-button)").remove();
+        var element = $("<div class='checkbox-ontainer'></div>").insertAfter(helpTextElement).kendoListView({
+            dataSource: checkboxesDataSource,
+            template: "<div><p><input type='checkbox' value='#:" + e.field + "#'/>#:" + e.field + "#</div>"
+        });
+        e.container.find("[type='submit']").click(function (e) {
+            var filter = dataSource.filter() || { logic: "and", filters: [] };
+            var fieldFilters = $.map(element.find(":checkbox:checked"), function (input) {
+                return {
+                    field: field,
+                    operator: "eq",
+                    value: type == "number" ? kendo.parseFloat(input.value) : input.value
+                };
+            });
+            if (fieldFilters.length) {
+                removeFiltersForField(filter, field);
+                filter.filters.push({
+                    logic: "or",
+                    filters: fieldFilters
+                });
+                dataSource.filter(filter);
+            }
+        });
+    }
+
+    function removeFiltersForField(expression, field) {
+        if (expression.filters) {
+            expression.filters = $.grep(expression.filters, function (filter) {
+                removeFiltersForField(filter, field);
+                if (filter.filters) {
+                    return filter.filters.length;
+                } else {
+                    return filter.field != field;
+                }
+            });
+        }
+    }
+
+    function uniqueForField(data, field) {
+        var map = {};
+        var result = [];
+        var item;
+        for (var i = 0; i < data.length; i++) {
+            item = data[i];
+            if (!map[item[field]]) {
+                result.push(item.toJSON());
+                map[item[field]] = true;
+            }
+        }
+        return result.sort(sort_by(field, false, function (a) { return a.toUpperCase(); }));
+    }
+
+    var sort_by = function (field, reverse, primer) {
+
+        var key = primer ?
+            function (x) { return primer(x[field]) } :
+            function (x) { return x[field] };
+
+        reverse = !reverse ? 1 : -1;
+
+        return function (a, b) {
+            return a = key(a), b = key(b), reverse * ((a > b) - (b > a));
+        }
+    }
+
+    $(function () {
+        var grid = $("#Grid").data("kendoGrid");
+        var myGridHeight = $(window).height() - 250;
+        $("#Grid .k-grid-content").height(myGridHeight);
+    });
+
+    function onCustomIndex() {
+        window.location.href = "";
+    }
+
+    function onCustomCreate() {
+        window.location.href = "";
+    }
+
+    function onCustomEdit(e) {
+        window.location.href = "";
+    }
+
+    function onDataBound(e) {
+        $("#Grid th").each(function () {
+            $(this).css("font-weight", "bold");
+            $(this).css("text-align", "center");
+        });
+
+    }
+
+    function error_handler(e) {
+        if (e.errors) {
+            var message = "Errors:\n";
+            $.each(e.errors, function (key, value) {
+                if ('errors' in value) {
+                    $.each(value.errors, function () {
+                        message += this + "\n";
+                    });
+                }
+            });
+            alert(message);
+        }
+    }
+
+</script>
+}
